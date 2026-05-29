@@ -256,15 +256,14 @@
 </div>
 
 <script>
-    // --- 1. CONFIG MULTI-SYNC SECURE MQTT (HIVEMQ) ---
-    // Ubah nama topic di bawah ini menjadi teks yang unik agar datamu tidak tabrakan dengan orang lain!
+    // --- 1. CONFIG MULTI-SYNC SECURE MQTT + HANDSHAKE PROTECTION ---
     const TOPIC_SYNC = "keuangan/sync/budi_premium_9921"; 
     const CLIENT_ID = "client_" + Math.random().toString(36).substring(2, 12);
     
     let mqttClient;
 
     function hubungkanMQTT() {
-        // Konfigurasi menggunakan WSS (WebSocket Secure) Port 443 / Jalur SSL resmi untuk GitHub Pages HTTPS
+        // Menggunakan WSS (WebSocket Secure) Port 443 khusus untuk GitHub Pages HTTPS
         mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(443), "/mqtt", CLIENT_ID);
         
         mqttClient.onConnectionLost = function (responseObject) {
@@ -276,27 +275,54 @@
         mqttClient.onMessageArrived = function (message) {
             try {
                 let payload = JSON.parse(message.payloadString);
+                
+                // SENSOR 1: Jika ada perangkat lain baru buka dan meminta data (REQUEST)
+                if (payload.tipe === "REQUEST" && payload.pengirim !== CLIENT_ID) {
+                    // Berikan data lengkap kita agar data mereka ter-update
+                    broadcastData("RESPONSE");
+                    return;
+                }
+
+                // SENSOR 2: Jika menerima kiriman data (RESPONSE / UPDATE)
                 if (payload.pengirim !== CLIENT_ID) {
+                    let listPendapatanLokal = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
+                    let listPengeluaranLokal = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
+                    let listHutangLokal = JSON.parse(localStorage.getItem('db_hutang')) || [];
+                    
+                    let totalItemLokal = listPendapatanLokal.length + listPengeluaranLokal.length + listHutangLokal.length;
+                    let totalItemMasuk = payload.pendapatan.length + payload.pengeluaran.length + payload.hutang.length;
+                    
+                    // PROTEKSI UTAMA: Tolak mentah-mentah jika data masuk kosong (Rp 0) sedangkan data lokal kita ada isinya!
+                    if (totalItemMasuk === 0 && totalItemLokal > 0) {
+                        console.log("Proteksi Blokir: Menolak data kosong dari device lain.");
+                        // Balas dengan mengirimkan data benar kita agar device lain ikut terisi
+                        broadcastData("RESPONSE");
+                        return;
+                    }
+
+                    // Jika lolos sensor, sinkronisasikan ke local storage
                     localStorage.setItem('db_pendapatan', JSON.stringify(payload.pendapatan || []));
                     localStorage.setItem('db_pengeluaran', JSON.stringify(payload.pengeluaran || []));
                     localStorage.setItem('db_hutang', JSON.stringify(payload.hutang || []));
-                    prosesDanTampilkanData(false); // Render ke layar tanpa broadcast balik
+                    
+                    prosesDanTampilkanData(false); // Render ke tabel tanpa broadcast ulang (anti looping)
                 }
             } catch (e) { console.error("Gagal memproses sync data:", e); }
         };
 
         let opsiKoneksi = {
             timeout: 5,
-            useSSL: true, // Wajib aktif agar disetujui keamanan browser di GitHub Pages
+            useSSL: true,
             cleanSession: true,
             onSuccess: function () {
                 document.getElementById('statusMqttBox').innerText = "Cloud Sync Aktif (Terhubung Aman)";
                 document.getElementById('statusMqttBox').className = "status-mqtt online";
                 mqttClient.subscribe(TOPIC_SYNC);
-                broadcastData(); 
+                
+                // Pas konek, jangan sebar data dulu, tapi tanya cloud apakah ada data dari device lain
+                mintaDataCloud();
             },
             onFailure: function (message) {
-                console.log("Port 443 gagal, mencoba jalur alternatif port 8884...", message);
                 setTimeout(hubungkanMQTTAlternatif, 2000);
             }
         };
@@ -310,7 +336,15 @@
         mqttClient.onMessageArrived = function(message) {
             try {
                 let payload = JSON.parse(message.payloadString);
+                if (payload.tipe === "REQUEST" && payload.pengirim !== CLIENT_ID) {
+                    broadcastData("RESPONSE");
+                    return;
+                }
                 if (payload.pengirim !== CLIENT_ID) {
+                    let totalItemLokal = ((JSON.parse(localStorage.getItem('db_pendapatan')) || []).length) + ((JSON.parse(localStorage.getItem('db_pengeluaran')) || []).length) + ((JSON.parse(localStorage.getItem('db_hutang')) || []).length);
+                    let totalItemMasuk = payload.pendapatan.length + payload.pengeluaran.length + payload.hutang.length;
+                    if (totalItemMasuk === 0 && totalItemLokal > 0) { broadcastData("RESPONSE"); return; }
+                    
                     localStorage.setItem('db_pendapatan', JSON.stringify(payload.pendapatan || []));
                     localStorage.setItem('db_pengeluaran', JSON.stringify(payload.pengeluaran || []));
                     localStorage.setItem('db_hutang', JSON.stringify(payload.hutang || []));
@@ -325,16 +359,25 @@
                 document.getElementById('statusMqttBox').innerText = "Cloud Sync Aktif (Jalur Cadangan)";
                 document.getElementById('statusMqttBox').className = "status-mqtt online";
                 mqttClient.subscribe(TOPIC_SYNC);
-                broadcastData();
+                mintaDataCloud();
             },
             onFailure: function() {
-                document.getElementById('statusMqttBox').innerText = "Cloud Offline. Berjalan dalam mode offline lokal.";
+                document.getElementById('statusMqttBox').innerText = "Cloud Offline. Mode Lokal Aktif.";
                 document.getElementById('statusMqttBox').className = "status-mqtt offline";
             }
         });
     }
 
-    function broadcastData() {
+    function mintaDataCloud() {
+        if (mqttClient && mqttClient.isConnected()) {
+            let requestPesan = { pengirim: CLIENT_ID, tipe: "REQUEST" };
+            let message = new Paho.MQTT.Message(JSON.stringify(requestPesan));
+            message.destinationName = TOPIC_SYNC;
+            mqttClient.send(message);
+        }
+    }
+
+    function broadcastData(tipePesan = "UPDATE") {
         if (mqttClient && mqttClient.isConnected()) {
             let listPendapatan = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
             let listPengeluaran = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
@@ -342,6 +385,7 @@
             
             let dataSync = {
                 pengirim: CLIENT_ID,
+                tipe: tipePesan,
                 pendapatan: listPendapatan,
                 pengeluaran: listPengeluaran,
                 hutang: listHutang
@@ -353,7 +397,7 @@
         }
     }
 
-    // --- 2. LOGIKA UKURAN & FORM ENGINE ---
+    // --- 2. LOGIKA APPS FORM & STORAGE ENGINE ---
     const hariIni = new Date().toISOString().split('T')[0];
     document.getElementById('in-tanggal').value = hariIni;
     document.getElementById('out-tanggal').value = hariIni;
@@ -473,7 +517,7 @@
         document.getElementById('debt-keterangan-baru').value = '';
     }
 
-    // --- 3. PROSES SIMPAN TRANSAKSI ---
+    // --- 3. LOGIKA SAVE DAN ACTION DATA ---
     function simpanPendapatan() {
         const tanggal = document.getElementById('in-tanggal').value;
         const pekerjaan = document.getElementById('in-pekerjaan-select').value;
@@ -544,7 +588,6 @@
         }
     }
 
-    // --- 4. ENGINE TAMPILAN & KALKULASI ---
     function hapusBarisPendapatan(idData) {
         let list = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
         localStorage.setItem('db_pendapatan', JSON.stringify(list.filter(item => item.id !== idData)));
@@ -573,6 +616,7 @@
         return dataArray;
     }
 
+    // --- 4. ENGINE RENDERING & MATH DATA ---
     function prosesDanTampilkanData(wajibBroadcast = true) {
         let listPendapatan = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
         let listPengeluaran = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
@@ -667,7 +711,7 @@
         document.getElementById('textTotalHutang').innerText = "Rp " + totalSisaHutangBelumDibayar.toLocaleString('id-ID');
         document.getElementById('textSisaSaldo').innerText = "Rp " + sisaSaldoDiTangan.toLocaleString('id-ID');
         
-        if(wajibBroadcast) broadcastData();
+        if(wajibBroadcast) broadcastData("UPDATE");
     }
 
     function downloadExcel() {
@@ -723,5 +767,6 @@
 
 </body>
 </html>
+
 
 
