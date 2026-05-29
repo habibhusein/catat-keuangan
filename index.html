@@ -3,169 +3,708 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pencatat Keuangan Bulanan</title>
+    <title>Aplikasi Keuangan Multi-Sync Premium + Sistem Hutang</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="xlsx.full.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
-        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h2, h3 { text-align: center; color: #2c3e50; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 15px; background-color: #f4f7f6; color: #333; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2, h3 { text-align: center; color: #2c3e50; margin-top: 25px; }
+        .section-box { border: 1px solid #e0e0e0; padding: 15px; border-radius: 8px; margin-bottom: 20px; background: #fafafa; }
+        .section-title { font-weight: bold; font-size: 16px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #ddd; }
         
-        /* Tombol-tombol */
-        button { width: 100%; padding: 12px; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-bottom: 10px; font-weight: bold; }
-        .btn-simpan { background-color: #27ae60; }
-        .btn-excel { background-color: #2980b9; }
-        .btn-hapus { background-color: #c0392b; font-size: 14px; padding: 8px; }
+        /* Status Koneksi MQTT */
+        .status-mqtt { text-align: center; font-size: 12px; padding: 5px; border-radius: 4px; margin-bottom: 15px; font-weight: bold; }
+        .online { background-color: #d4edda; color: #155724; }
+        .offline { background-color: #f8d7da; color: #721c24; }
+
+        /* Dashboard Grid */
+        .dashboard { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 20px; }
+        .box { padding: 12px; text-align: center; border-radius: 6px; font-weight: bold; color: white; }
+        .box-income { background-color: #27ae60; }
+        .box-expense { background-color: #e74c3c; }
+        .box-debt { background-color: #f1c40f; color: #2c3e50; }
+        .box-balance { background-color: #2980b9; font-size: 18px; }
+        .box span { display: block; font-size: 18px; margin-top: 5px; }
+
+        /* Form & Input */
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 14px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
         
-        .total-box { background-color: #ecf0f1; padding: 15px; text-align: center; font-size: 20px; font-weight: bold; border-radius: 5px; margin: 20px 0; color: #2c3e50; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        /* Input Kombinasi Tambah Dropdown */
+        .input-group { display: flex; gap: 8px; margin-top: 5px; }
+        .input-group input { flex: 1; }
+        .btn-add { width: auto; background-color: #34495e; margin: 0; padding: 0 15px; }
+        
+        /* Tombol kecil hapus opsi pilihan */
+        .btn-remove-opt { background-color: #e74c3c; font-size: 11px; padding: 4px 8px; width: auto; margin-top: 4px; display: inline-block; float: right; border-radius: 4px; }
+
+        /* Sort Kontrol Panel */
+        .sort-box { background: #eef2f3; padding: 10px; border-radius: 6px; margin-top: 15px; border: 1px solid #dcdde1; }
+        .sort-box label { font-size: 12px; color: #555; }
+
+        /* Tombol Utama */
+        button { width: 100%; padding: 12px; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: bold; margin-top: 5px; }
+        .btn-income { background-color: #2ecc71; }
+        .btn-expense { background-color: #e67e22; }
+        .btn-debt-color { background-color: #f39c12; }
+        .btn-pay-color { background-color: #16a085; }
+        .btn-excel { background-color: #8e44ad; font-size: 16px; margin: 20px 0; }
+        .btn-hapus-semua { background-color: #95a5a6; font-size: 13px; padding: 8px; margin-top: 30px; }
+        
+        /* Tombol Hapus Baris */
+        .btn-delete { background-color: #e74c3c; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; width: auto; margin: 0; }
+        .btn-delete:hover { background-color: #c0392b; }
+
+        /* Status Badge */
+        .badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 11px; color: white; display: inline-block; }
+        .badge-lunas { background-color: #2ecc71; }
+        .badge-belum { background-color: #e74c3c; }
+
+        /* Sub-tabel untuk history angsuran */
+        .log-pembayaran { font-size: 11px; color: #555; background: #f9f9f9; padding: 4px; margin-top: 4px; border-left: 3px solid #16a085; }
+
+        /* Tabel */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; background: white; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #34495e; color: white; }
+        .subtotal-row { background-color: #eaeded; font-weight: bold; }
+        .job-title { background: #d5f5e3; padding: 6px 10px; border-radius: 4px; font-weight: bold; margin-top: 15px; display: inline-block; font-size: 14px; }
+        .clearfix::after { content: ""; clear: both; display: table; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Keuangan Bulanan</h2>
+    <h2>Catatan Keuangan Cloud-Sync</h2>
     
-    <div class="total-box">
-        Total Bulan Ini: <br>
-        <span id="totalPengeluaran">Rp 0</span>
+    <div id="statusMqttBox" class="status-mqtt offline">Menghubungkan ke Cloud Sync...</div>
+
+    <div class="dashboard">
+        <div class="box box-income">Total Pendapatan <span id="textTotalPendapatan">Rp 0</span></div>
+        <div class="box box-debt">Sisa Hutang Belum Dibayar <span id="textTotalHutang">Rp 0</span></div>
+        <div class="box box-expense">Total Pengeluaran <span id="textTotalPengeluaran">Rp 0</span></div>
+        <div class="box box-balance">Uang di Pegangan (Sisa Saldo) <span id="textSisaSaldo">Rp 0</span></div>
     </div>
 
-    <div class="form-group">
-        <label>Tanggal</label>
-        <input type="date" id="tanggal" required>
-    </div>
-    <div class="form-group">
-        <label>Kategori</label>
-        <select id="kategori">
-            <option value="Makanan & Minuman">Makanan & Minuman</option>
-            <option value="Transportasi">Transportasi</option>
-            <option value="Tagihan/Bulanan">Tagihan/Bulanan</option>
-            <option value="Hiburan">Hiburan</option>
-        </select>
-    </div>
-    <div class="form-group">
-        <label>Jumlah (Rp)</label>
-        <input type="number" id="jumlah" placeholder="Contoh: 50000" required>
-    </div>
-    <div class="form-group">
-        <label>Periode</label>
-        <select id="periode">
-            <option value="Mingguan">Mingguan</option>
-            <option value="Bulanan">Bulanan</option>
-        </select>
-    </div>
-    
-    <button class="btn-simpan" onclick="simpanData()">Simpan Data</button>
-    <button class="btn-excel" onclick="downloadExcel()">Simpan ke Excel (.xlsx)</button>
+    <button class="btn-excel" onclick="downloadExcel()">Simpan Semua ke Excel (.xlsx)</button>
 
-    <h3>Riwayat Pengeluaran</h3>
-    <table id="tabelRiwayat">
+    <div class="section-box">
+        <div class="section-title" style="color: #27ae60;">+ Tambah Pendapatan</div>
+        <div class="form-group">
+            <label>Tanggal</label>
+            <input type="date" id="in-tanggal">
+        </div>
+        <div class="form-group clearfix">
+            <label>Pilih Pekerjaan / Sumber</label>
+            <select id="in-pekerjaan-select"></select>
+            <button type="button" class="btn-remove-opt" onclick="hapusOpsiTerpilih('db_opsi_pekerjaan', 'in-pekerjaan-select')">Hapus Pilihan Ini</button>
+            <div class="input-group" style="margin-top:28px;">
+                <input type="text" id="in-pekerjaan-baru" placeholder="Ketik pekerjaan baru jika belum ada...">
+                <button type="button" class="btn-add" onclick="tambahPekerjaanPermanen()">+</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Jumlah Pendapatan (Rp)</label>
+            <input type="number" id="in-jumlah" placeholder="Contoh: 150000">
+        </div>
+        <button class="btn-income" onclick="simpanPendapatan()">Simpan Pendapatan</button>
+    </div>
+
+    <div class="section-box">
+        <div class="section-title" style="color: #e67e22;">- Tambah Pengeluaran</div>
+        <div class="form-group">
+            <label>Tanggal</label>
+            <input type="date" id="out-tanggal">
+        </div>
+        <div class="form-group clearfix">
+            <label>Kategori Pengeluaran</label>
+            <select id="out-kategori-select"></select>
+            <button type="button" class="btn-remove-opt" onclick="hapusOpsiTerpilih('db_opsi_kategori', 'out-kategori-select')">Hapus Pilihan Ini</button>
+            <div class="input-group" style="margin-top:28px;">
+                <input type="text" id="out-kategori-baru" placeholder="Ketik kategori baru (ex: Operasional)...">
+                <button type="button" class="btn-add" onclick="tambahKategoriPermanen()">+</button>
+            </div>
+        </div>
+        <div class="form-group clearfix">
+            <label>Keterangan Pengeluaran</label>
+            <select id="out-keterangan-select"></select>
+            <button type="button" class="btn-remove-opt" onclick="hapusOpsiTerpilih('db_opsi_keterangan', 'out-keterangan-select')">Hapus Pilihan Ini</button>
+            <div class="input-group" style="margin-top:28px;">
+                <input type="text" id="out-keterangan-baru" placeholder="Ketik ket. baru (ex: Ngeprint, Fotocopy)...">
+                <button type="button" class="btn-add" onclick="tambahKeteranganPermanen()">+</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Jumlah Pengeluaran (Rp)</label>
+            <input type="number" id="out-jumlah" placeholder="Contoh: 25000">
+        </div>
+        <div class="form-group">
+            <label>Periode Record</label>
+            <select id="out-periode">
+                <option value="Bulanan">Bulanan</option>
+                <option value="Mingguan">Mingguan</option>
+            </select>
+        </div>
+        <button class="btn-expense" onclick="simpanPengeluaran()">Simpan Pengeluaran</button>
+    </div>
+
+    <div class="section-box">
+        <div class="section-title" style="color: #f39c12;">+ Terima Hutang Baru (Uang Masuk Ekstra)</div>
+        <div class="form-group">
+            <label>Tanggal Terima Hutang</label>
+            <input type="date" id="debt-tanggal">
+        </div>
+        <div class="form-group clearfix">
+            <label>Hutang Ke Siapa (Nama Kreditur)</label>
+            <select id="debt-nama-select"></select>
+            <button type="button" class="btn-remove-opt" onclick="hapusOpsiTerpilih('db_opsi_pemberihutang', 'debt-nama-select')">Hapus Pilihan Ini</button>
+            <div class="input-group" style="margin-top:28px;">
+                <input type="text" id="debt-nama-baru" placeholder="Ketik nama pemberi hutang baru...">
+                <button type="button" class="btn-add" onclick="tambahPemberiHutangPermanen()">+</button>
+            </div>
+        </div>
+        <div class="form-group clearfix">
+            <label>Keterangan Keperluan Hutang</label>
+            <select id="debt-keterangan-select"></select>
+            <button type="button" class="btn-remove-opt" onclick="hapusOpsiTerpilih('db_opsi_keperluan_hutang', 'debt-keterangan-select')">Hapus Pilihan Ini</button>
+            <div class="input-group" style="margin-top:28px;">
+                <input type="text" id="debt-keterangan-baru" placeholder="Ketik keperluan baru (ex: Dana Darurat, Modal)...">
+                <button type="button" class="btn-add" onclick="tambahKeperluanHutangPermanen()">+</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Jumlah Hutang Pokok (Rp)</label>
+            <input type="number" id="debt-jumlah" placeholder="Contoh: 500000">
+        </div>
+        <button class="btn-debt-color" onclick="simpanHutangBaru()">Simpan Hutang Baru</button>
+    </div>
+
+    <div class="section-box">
+        <div class="section-title" style="color: #16a085;">- Bayar / Cicil Hutang</div>
+        <div class="form-group">
+            <label>Tanggal Pembayaran</label>
+            <input type="date" id="pay-tanggal">
+        </div>
+        <div class="form-group">
+            <label>Pilih Hutang Yang Ingin Dibayar</label>
+            <select id="pay-debt-select"></select>
+        </div>
+        <div class="form-group">
+            <label>Jumlah Uang Yang Dibayarkan (Rp)</label>
+            <input type="number" id="pay-jumlah" placeholder="Contoh: 100000">
+        </div>
+        <button class="btn-pay-color" onclick="simpanPembayaranHutang()">Update Pembayaran Hutang</button>
+    </div>
+
+    <hr>
+
+    <h3>Rincian Pendapatan Kerja</h3>
+    <div class="sort-box">
+        <label>Urutkan Daftar Pendapatan Berdasarkan:</label>
+        <select id="sortPendapatan" onchange="prosesDanTampilkanData(false)">
+            <option value="waktu-baru">Waktu Input: Terbaru Diatas</option>
+            <option value="waktu-lama">Waktu Input: Terlama Diatas</option>
+            <option value="tanggal-atas">Tanggal Transaksi: Menurun (Terbaru)</option>
+            <option value="tanggal-bawah">Tanggal Transaksi: Naik (Terlama)</option>
+        </select>
+    </div>
+    <div id="areaTabelPendapatan"></div>
+
+    <h3>Rincian Semua Pengeluaran</h3>
+    <div class="sort-box">
+        <label>Urutkan Daftar Pengeluaran Berdasarkan:</label>
+        <select id="sortPengeluaran" onchange="prosesDanTampilkanData(false)">
+            <option value="tanggal-atas">Tanggal Transaksi: Menurun (Terbaru)</option>
+            <option value="tanggal-bawah">Tanggal Transaksi: Naik (Terlama)</option>
+            <option value="waktu-baru">Waktu Input: Terbaru Diatas</option>
+        </select>
+    </div>
+    <table>
         <thead>
             <tr>
-                <th>Tanggal</th>
+                <th>Tanggal & Hari</th>
                 <th>Kategori</th>
+                <th>Keterangan</th>
                 <th>Jumlah</th>
-                <th>Periode</th>
+                <th>Aksi</th>
             </tr>
         </thead>
-        <tbody></tbody>
+        <tbody id="bodyTabelPengeluaran"></tbody>
+    </table>
+
+    <h3>Rincian Hutang & Riwayat Pembayaran</h3>
+    <table style="width:100%; overflow-x: auto; display:block;">
+        <thead>
+            <tr>
+                <th style="min-width:120px;">Info Hutang</th>
+                <th style="min-width:100px;">Hutang Pokok</th>
+                <th style="min-width:100px;">Terbayar</th>
+                <th style="min-width:100px;">Sisa Hutang</th>
+                <th style="min-width:80px;">Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody id="bodyTabelHutang"></tbody>
     </table>
     
-    <br><br>
-    <button class="btn-hapus" onclick="resetDataBulanIni()">Reset Data (Mulai Bulan Baru)</button>
+    <button class="btn-hapus-semua" onclick="resetAplikasi()">Reset Semua Data (Bulan Baru)</button>
 </div>
 
 <script>
-    // Set tanggal otomatis ke hari ini saat aplikasi dibuka
-    document.getElementById('tanggal').valueToDate = new Date();
+    // --- 1. KONFIGURASI SINKRONISASI MQTT CLOUD (HIVEMQ) ---
+    const TOPIC_SYNC = "keuangan/sync/rahasia123"; 
+    const CLIENT_ID = "client_" + Math.random().toString(36).substring(2, 10);
+    
+    let mqttClient;
+
+    function hubungkanMQTT() {
+        mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), CLIENT_ID);
+        
+        mqttClient.onConnectionLost = function (responseObject) {
+            document.getElementById('statusMqttBox').innerText = "Koneksi Terputus. Mencoba menghubungkan kembali...";
+            document.getElementById('statusMqttBox').className = "status-mqtt offline";
+            setTimeout(hubungkanMQTT, 5000);
+        };
+
+        mqttClient.onMessageArrived = function (message) {
+            try {
+                let payload = JSON.parse(message.payloadString);
+                if (payload.pengirim !== CLIENT_ID) {
+                    localStorage.setItem('db_pendapatan', JSON.stringify(payload.pendapatan));
+                    localStorage.setItem('db_pengeluaran', JSON.stringify(payload.pengeluaran));
+                    localStorage.setItem('db_hutang', JSON.stringify(payload.hutang || []));
+                    prosesDanTampilkanData(false);
+                }
+            } catch (e) { console.error("Gagal memproses sync data:", e); }
+        };
+
+        mqttClient.connect({
+            onSuccess: function () {
+                document.getElementById('statusMqttBox').innerText = "Cloud Sync Aktif (Terhubung)";
+                document.getElementById('statusMqttBox').className = "status-mqtt online";
+                mqttClient.subscribe(TOPIC_SYNC);
+                broadcastData();
+            },
+            onFailure: function (message) {
+                document.getElementById('statusMqttBox').innerText = "Gagal Konek ke Cloud. Mode Offline Aktif.";
+                setTimeout(hubungkanMQTT, 10000);
+            },
+            useSSL: true
+        });
+    }
+
+    function broadcastData() {
+        if (mqttClient && mqttClient.isConnected()) {
+            let listPendapatan = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
+            let listPengeluaran = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
+            let listHutang = JSON.parse(localStorage.getItem('db_hutang')) || [];
+            
+            let dataSync = {
+                pengirim: CLIENT_ID,
+                pendapatan: listPendapatan,
+                pengeluaran: listPengeluaran,
+                hutang: listHutang
+            };
+
+            let message = new Paho.MQTT.Message(JSON.stringify(dataSync));
+            message.destinationName = TOPIC_SYNC;
+            mqttClient.send(message);
+        }
+    }
+
+    // --- 2. LOGIKA UTAMA APLIKASI ---
+    const hariIni = new Date().toISOString().split('T')[0];
+    document.getElementById('in-tanggal').value = hariIni;
+    document.getElementById('out-tanggal').value = hariIni;
+    document.getElementById('debt-tanggal').value = hariIni;
+    document.getElementById('pay-tanggal').value = hariIni;
 
     window.onload = function() {
-        tampilkanDanHitungData();
+        inisialisasiDropdownPilihan();
+        prosesDanTampilkanData(false);
+        hubungkanMQTT();
     };
 
-    function simpanData() {
-        const tanggal = document.getElementById('tanggal').value;
-        const kategori = document.getElementById('kategori').value;
-        const jumlah = parseInt(document.getElementById('jumlah').value);
-        const periode = document.getElementById('periode').value;
-
-        if (!tanggal || !jumlah) {
-            alert("Mohon isi tanggal dan jumlah uang!");
-            return;
-        }
-
-        let dataPengeluaran = JSON.parse(localStorage.getItem('dataKeuangan')) || [];
-        dataPengeluaran.push({ Tanggal: tanggal, Kategori: kategori, Jumlah: jumlah, Periode: periode });
-        
-        localStorage.setItem('dataKeuangan', JSON.stringify(dataPengeluaran));
-        document.getElementById('jumlah').value = '';
-        
-        tampilkanDanHitungData();
+    function formatTanggalIndonesia(tanggalStr) {
+        if (!tanggalStr) return "-";
+        const parts = tanggalStr.split('-');
+        const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+        return dateObj.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
     }
 
-    function tampilkanDanHitungData() {
-        let dataPengeluaran = JSON.parse(localStorage.getItem('dataKeuangan')) || [];
-        const tbody = document.querySelector('#tabelRiwayat tbody');
-        const totalSpan = document.getElementById('totalPengeluaran');
-        
-        tbody.innerHTML = '';
-        let total = 0;
+    function inisialisasiDropdownPilihan() {
+        // A. Pilihan Pekerjaan
+        let listKerja = JSON.parse(localStorage.getItem('db_opsi_pekerjaan')) || ["Gaji Pokok", "Freelance Desain", "Jual Pulsa"];
+        localStorage.setItem('db_opsi_pekerjaan', JSON.stringify(listKerja));
+        const selectKerja = document.getElementById('in-pekerjaan-select');
+        selectKerja.innerHTML = '';
+        listKerja.forEach(k => selectKerja.innerHTML += `<option value="${k}">${k}</option>`);
 
-        // Urutkan data berdasarkan tanggal terbaru
-        dataPengeluaran.sort((a, b) => new Date(b.Tanggal) - new Date(a.Tanggal));
+        // B. Pilihan Kategori Pengeluaran
+        let listKat = JSON.parse(localStorage.getItem('db_opsi_kategori')) || ["Kebutuhan Kerja", "Makanan & Minuman", "Transportasi", "Lain-lain"];
+        localStorage.setItem('db_opsi_kategori', JSON.stringify(listKat));
+        const selectKat = document.getElementById('out-kategori-select');
+        selectKat.innerHTML = '';
+        listKat.forEach(k => selectKat.innerHTML += `<option value="${k}">${k}</option>`);
 
-        dataPengeluaran.forEach(item => {
-            total += item.Jumlah;
-            let row = `<tr>
-                <td>${item.Tanggal}</td>
-                <td>${item.Kategori}</td>
-                <td>Rp ${item.Jumlah.toLocaleString('id-ID')}</td>
-                <td>${item.Periode}</td>
-            </tr>`;
-            tbody.innerHTML += row;
+        // C. Pilihan Keterangan Pengeluaran
+        let listKet = JSON.parse(localStorage.getItem('db_opsi_keterangan')) || ["Fotocopy berkas", "Ngeprint laporan", "Beli jajan", "Bensin"];
+        localStorage.setItem('db_opsi_keterangan', JSON.stringify(listKet));
+        const selectKet = document.getElementById('out-keterangan-select');
+        selectKet.innerHTML = '';
+        listKet.forEach(k => selectKet.innerHTML += `<option value="${k}">${k}</option>`);
+
+        // D. Pilihan Nama Pemberi Hutang
+        let listHut = JSON.parse(localStorage.getItem('db_opsi_pemberihutang')) || ["Bank Mandiri", "Teman Kerja", "Orang Tua", "Shopee Paylater"];
+        localStorage.setItem('db_opsi_pemberihutang', JSON.stringify(listHut));
+        const selectHut = document.getElementById('debt-nama-select');
+        selectHut.innerHTML = '';
+        listHut.forEach(h => selectHut.innerHTML += `<option value="${h}">${h}</option>`);
+
+        // E. Pilihan Keterangan Keperluan Hutang (BARU)
+        let listKepHutang = JSON.parse(localStorage.getItem('db_opsi_keperluan_hutang')) || ["Pinjam modal proyek", "Dana darurat keluarga", "Belanja bulanan ekstra", "Talangan operasional"];
+        localStorage.setItem('db_opsi_keperluan_hutang', JSON.stringify(listKepHutang));
+        const selectKepHutang = document.getElementById('debt-keterangan-select');
+        selectKepHutang.innerHTML = '';
+        listKepHutang.forEach(kh => selectKepHutang.innerHTML += `<option value="${kh}">${kh}</option>`);
+    }
+
+    function hapusOpsiTerpilih(keyStorage, idSelect) {
+        const selectElement = document.getElementById(idSelect);
+        const nilaiTerpilih = selectElement.value;
+        if (!nilaiTerpilih) return alert("Tidak ada pilihan yang bisa dihapus!");
+
+        if (confirm(`Hapus "${nilaiTerpilih}" dari menu pilihan?`)) {
+            let list = JSON.parse(localStorage.getItem(keyStorage)) || [];
+            list = list.filter(item => item !== nilaiTerpilih);
+            localStorage.setItem(keyStorage, JSON.stringify(list));
+            inisialisasiDropdownPilihan();
+        }
+    }
+
+    function tambahPekerjaanPermanen() {
+        const inputBaru = document.getElementById('in-pekerjaan-baru').value.trim();
+        if (!inputBaru) return;
+        let list = JSON.parse(localStorage.getItem('db_opsi_pekerjaan')) || [];
+        if (!list.includes(inputBaru)) list.push(inputBaru);
+        localStorage.setItem('db_opsi_pekerjaan', JSON.stringify(list));
+        inisialisasiDropdownPilihan();
+        document.getElementById('in-pekerjaan-select').value = inputBaru;
+        document.getElementById('in-pekerjaan-baru').value = '';
+    }
+
+    function tambahKategoriPermanen() {
+        const inputBaru = document.getElementById('out-kategori-baru').value.trim();
+        if (!inputBaru) return;
+        let list = JSON.parse(localStorage.getItem('db_opsi_kategori')) || [];
+        if (!list.includes(inputBaru)) list.push(inputBaru);
+        localStorage.setItem('db_opsi_kategori', JSON.stringify(list));
+        inisialisasiDropdownPilihan();
+        document.getElementById('out-kategori-select').value = inputBaru;
+        document.getElementById('out-kategori-baru').value = '';
+    }
+
+    function tambahKeteranganPermanen() {
+        const inputBaru = document.getElementById('out-keterangan-baru').value.trim();
+        if (!inputBaru) return;
+        let list = JSON.parse(localStorage.getItem('db_opsi_keterangan')) || [];
+        if (!list.includes(inputBaru)) list.push(inputBaru);
+        localStorage.setItem('db_opsi_keterangan', JSON.stringify(list));
+        inisialisasiDropdownPilihan();
+        document.getElementById('out-keterangan-select').value = inputBaru;
+        document.getElementById('out-keterangan-baru').value = '';
+    }
+
+    function tambahPemberiHutangPermanen() {
+        const inputBaru = document.getElementById('debt-nama-baru').value.trim();
+        if (!inputBaru) return;
+        let list = JSON.parse(localStorage.getItem('db_opsi_pemberihutang')) || [];
+        if (!list.includes(inputBaru)) list.push(inputBaru);
+        localStorage.setItem('db_opsi_pemberihutang', JSON.stringify(list));
+        inisialisasiDropdownPilihan();
+        document.getElementById('debt-nama-select').value = inputBaru;
+        document.getElementById('debt-nama-baru').value = '';
+    }
+
+    // FUNGSI TAMBAH KEPERLUAN HUTANG BARUsecara PERMANEN
+    function tambahKeperluanHutangPermanen() {
+        const inputBaru = document.getElementById('debt-keterangan-baru').value.trim();
+        if (!inputBaru) return alert("Ketik keperluan hutang terlebih dahulu!");
+        let list = JSON.parse(localStorage.getItem('db_opsi_keperluan_hutang')) || [];
+        if (!list.includes(inputBaru)) list.push(inputBaru);
+        localStorage.setItem('db_opsi_keperluan_hutang', JSON.stringify(list));
+        inisialisasiDropdownPilihan();
+        document.getElementById('debt-keterangan-select').value = inputBaru;
+        document.getElementById('debt-keterangan-baru').value = '';
+    }
+
+    // SIMPAN DATA TRANSAKSI
+    function simpanPendapatan() {
+        const tanggal = document.getElementById('in-tanggal').value;
+        const pekerjaan = document.getElementById('in-pekerjaan-select').value;
+        const jumlah = parseInt(document.getElementById('in-jumlah').value);
+        if (!tanggal || !jumlah) return alert("Isi jumlah!");
+
+        let list = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
+        list.push({ id: "inc_" + Date.now(), Tanggal: tanggal, Pekerjaan: pekerjaan, Jumlah: jumlah, WaktuDibuat: Date.now() });
+        localStorage.setItem('db_pendapatan', JSON.stringify(list));
+        document.getElementById('in-jumlah').value = '';
+        prosesDanTampilkanData(true);
+    }
+
+    function simpanPengeluaran() {
+        const tanggal = document.getElementById('out-tanggal').value;
+        const kategori = document.getElementById('out-kategori-select').value;
+        const keterangan = document.getElementById('out-keterangan-select').value;
+        const jumlah = parseInt(document.getElementById('out-jumlah').value);
+        const periode = document.getElementById('out-periode').value;
+        if (!tanggal || !jumlah) return alert("Isi jumlah!");
+
+        let list = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
+        list.push({ id: "exp_" + Date.now(), Tanggal: tanggal, Kategori: kategori, Keterangan: keterangan, Jumlah: jumlah, Periode: periode, WaktuDibuat: Date.now() });
+        localStorage.setItem('db_pengeluaran', JSON.stringify(list));
+        document.getElementById('out-jumlah').value = '';
+        prosesDanTampilkanData(true);
+    }
+
+    function simpanHutangBaru() {
+        const tanggal = document.getElementById('debt-tanggal').value;
+        const nama = document.getElementById('debt-nama-select').value;
+        const keterangan = document.getElementById('debt-keterangan-select').value;
+        const jumlah = parseInt(document.getElementById('debt-jumlah').value);
+        if (!tanggal || !jumlah || !nama || !keterangan) return alert("Isi semua data hutang pokok!");
+
+        let list = JSON.parse(localStorage.getItem('db_hutang')) || [];
+        list.push({
+            id: "debt_" + Date.now(),
+            Tanggal: tanggal,
+            Nama: nama,
+            Keterangan: keterangan,
+            JumlahPokok: jumlah,
+            ListPembayaran: [],
+            WaktuDibuat: Date.now()
+        });
+        localStorage.setItem('db_hutang', JSON.stringify(list));
+        document.getElementById('debt-jumlah').value = '';
+        prosesDanTampilkanData(true);
+    }
+
+    function simpanPembayaranHutang() {
+        const idHutang = document.getElementById('pay-debt-select').value;
+        const tanggalBayar = document.getElementById('pay-tanggal').value;
+        const jumlahBayar = parseInt(document.getElementById('pay-jumlah').value);
+
+        if (!idHutang || !tanggalBayar || !jumlahBayar) return alert("Lengkapi data pembayaran!");
+
+        let listHutang = JSON.parse(localStorage.getItem('db_hutang')) || [];
+        let index = listHutang.findIndex(item => item.id === idHutang);
+
+        if (index !== -1) {
+            let saatIniTerbayar = listHutang[index].ListPembayaran.reduce((sum, p) => sum + p.JumlahBayar, 0);
+            let sisa = listHutang[index].JumlahPokok - saatIniTerbayar;
+
+            if (jumlahBayar > sisa) return alert(`Jumlah bayar Rp ${jumlahBayar.toLocaleString()} melebihi sisa hutang Rp ${sisa.toLocaleString()}!`);
+
+            listHutang[index].ListPembayaran.push({
+                TanggalBayar: tanggalBayar,
+                JumlahBayar: jumlahBayar
+            });
+
+            localStorage.setItem('db_hutang', JSON.stringify(listHutang));
+            document.getElementById('pay-jumlah').value = '';
+            prosesDanTampilkanData(true);
+        }
+    }
+
+    // HAPUS BARIS DATA
+    function hapusBarisPendapatan(idData) {
+        let list = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
+        localStorage.setItem('db_pendapatan', JSON.stringify(list.filter(item => item.id !== idData)));
+        prosesDanTampilkanData(true);
+    }
+
+    function hapusBarisPengeluaran(idData) {
+        let list = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
+        localStorage.setItem('db_pengeluaran', JSON.stringify(list.filter(item => item.id !== idData)));
+        prosesDanTampilkanData(true);
+    }
+
+    function hapusBarisHutang(idData) {
+        if(confirm("Hapus catatan hutang ini secara permanen?")) {
+            let list = JSON.parse(localStorage.getItem('db_hutang')) || [];
+            localStorage.setItem('db_hutang', JSON.stringify(list.filter(item => item.id !== idData)));
+            prosesDanTampilkanData(true);
+        }
+    }
+
+    // ENGINE SORTING
+    function urutkanData(dataArray, tipeSort) {
+        if (tipeSort === "tanggal-atas") return dataArray.sort((a, b) => new Date(b.Tanggal) - new Date(a.Tanggal));
+        if (tipeSort === "tanggal-bawah") return dataArray.sort((a, b) => new Date(a.Tanggal) - new Date(b.Tanggal));
+        if (tipeSort === "waktu-baru") return dataArray.sort((a, b) => b.WaktuDibuat - a.WaktuDibuat);
+        if (tipeSort === "waktu-lama") return dataArray.sort((a, b) => a.WaktuDibuat - b.WaktuDibuat);
+        return dataArray;
+    }
+
+    // PROSES DAN TAMPILKAN SELURUH DATA
+    function prosesDanTampilkanData(wajibBroadcast = true) {
+        let listPendapatan = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
+        let listPengeluaran = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
+        let listHutang = JSON.parse(localStorage.getItem('db_hutang')) || [];
+
+        let totalPendapatan = 0;
+        let totalPengeluaran = 0;
+        let totalSisaHutangBelumDibayar = 0;
+
+        // Ambil aturan sorting
+        listPendapatan = urutkanData(listPendapatan, document.getElementById('sortPendapatan').value);
+        listPengeluaran = urutkanData(listPengeluaran, document.getElementById('sortPengeluaran').value);
+
+        // 1. RENDER PENDAPATAN
+        const areaPendapatan = document.getElementById('areaTabelPendapatan');
+        areaPendapatan.innerHTML = '';
+        let grupPekerjaan = {};
+        listPendapatan.forEach(item => {
+            totalPendapatan += item.Jumlah;
+            if (!grupPekerjaan[item.Pekerjaan]) grupPekerjaan[item.Pekerjaan] = [];
+            grupPekerjaan[item.Pekerjaan].push(item);
         });
 
-        totalSpan.innerText = "Rp " + total.toLocaleString('id-ID');
+        for (let namaKerja in grupPekerjaan) {
+            let subTotalKerja = 0;
+            let htmlStruktur = `<div class="job-title">Pekerjaan: ${namaKerja}</div><table><thead><tr><th>Tanggal</th><th>Jumlah</th><th>Aksi</th></tr></thead><tbody>`;
+            grupPekerjaan[namaKerja].forEach(item => {
+                subTotalKerja += item.Jumlah;
+                htmlStruktur += `<tr><td>${formatTanggalIndonesia(item.Tanggal)}</td><td>Rp ${item.Jumlah.toLocaleString('id-ID')}</td><td><button class="btn-delete" onclick="hapusBarisPendapatan('${item.id}')">Hapus</button></td></tr>`;
+            });
+            htmlStruktur += `<tr class="subtotal-row"><td>Sub-Total</td><td colspan="2">Rp ${subTotalKerja.toLocaleString('id-ID')}</td></tr></tbody></table>`;
+            areaPendapatan.innerHTML += htmlStruktur;
+        }
+        if(listPendapatan.length === 0) areaPendapatan.innerHTML = "<p style='color:gray; font-size:13px;'>Belum ada data pendapatan.</p>";
+
+        // 2. RENDER PENGELUARAN
+        const bodyPengeluaran = document.getElementById('bodyTabelPengeluaran');
+        bodyPengeluaran.innerHTML = '';
+        listPengeluaran.forEach(item => {
+            totalPengeluaran += item.Jumlah;
+            bodyPengeluaran.innerHTML += `<tr><td>${formatTanggalIndonesia(item.Tanggal)}</td><td>${item.Kategori}</td><td>${item.Keterangan}</td><td>Rp ${item.Jumlah.toLocaleString('id-ID')}</td><td><button class="btn-delete" onclick="hapusBarisPengeluaran('${item.id}')">Hapus</button></td></tr>`;
+        });
+        if(listPengeluaran.length === 0) bodyPengeluaran.innerHTML = "<tr><td colspan='5' style='color:gray; text-align:center;'>Belum ada data pengeluaran.</td></tr>";
+
+        // 3. RENDER TABEL UTANG PINTAR & DROPDOWN INPUT BAYAR
+        const bodyHutang = document.getElementById('bodyTabelHutang');
+        const selectPayDebt = document.getElementById('pay-debt-select');
+        bodyHutang.innerHTML = '';
+        selectPayDebt.innerHTML = '<option value="">-- Pilih Hutang Mana --</option>';
+
+        listHutang.sort((a,b) => b.WaktuDibuat - a.WaktuDibuat);
+
+        listHutang.forEach(item => {
+            let totalTerbayar = item.ListPembayaran.reduce((sum, p) => sum + p.JumlahBayar, 0);
+            let sisaHutang = item.JumlahPokok - totalTerbayar;
+            let status = sisaHutang <= 0 ? `<span class="badge badge-lunas">LUNAS</span>` : `<span class="badge badge-belum">Belum Lunas</span>`;
+            
+            if(sisaHutang > 0) {
+                totalSisaHutangBelumDibayar += sisaHutang;
+                selectPayDebt.innerHTML += `<option value="${item.id}">Ke: ${item.Nama} (Sisa: Rp ${sisaHutang.toLocaleString()})</option>`;
+            }
+
+            let htmlLogBayar = "";
+            if(item.ListPembayaran.length > 0) {
+                htmlLogBayar = "<div style='margin-top:5px; font-weight:bold;'>Riwayat Bayar:</div>";
+                item.ListPembayaran.forEach(p => {
+                    htmlLogBayar += `<div class="log-pembayaran">🗓️ ${formatTanggalIndonesia(p.TanggalBayar)} - Bayar: Rp ${p.JumlahBayar.toLocaleString('id-ID')}</div>`;
+                });
+            } else {
+                htmlLogBayar = "<div style='color:gray; font-size:11px; margin-top:5px;'>Belum pernah dicicil</div>";
+            }
+
+            bodyHutang.innerHTML += `
+                <tr>
+                    <td>
+                        <b>${item.Nama}</b><br>
+                        <small style="color:#7f8c8d;">📅 ${formatTanggalIndonesia(item.Tanggal)}</small><br>
+                        <span style="font-size:11px; color:#555;">Keperluan: ${item.Keterangan}</span>
+                    </td>
+                    <td>Rp ${item.JumlahPokok.toLocaleString('id-ID')}</td>
+                    <td>Rp ${totalTerbayar.toLocaleString('id-ID')}${htmlLogBayar}</td>
+                    <td style="color:${sisaHutang > 0 ? '#e74c3c' : '#27ae60'}; font-weight:bold;">Rp ${sisaHutang.toLocaleString('id-ID')}</td>
+                    <td>${status}</td>
+                    <td><button class="btn-delete" onclick="hapusBarisHutang('${item.id}')">Hapus</button></td>
+                </tr>
+            `;
+        });
+        if(listHutang.length === 0) bodyHutang.innerHTML = "<tr><td colspan='6' style='color:gray; text-align:center;'>Tidak ada catatan beban hutang.</td></tr>";
+
+        // 4. INTEGRASI DASHBOARD UTAMA
+        let sisaSaldoDiTangan = totalPendapatan + totalSisaHutangBelumDibayar - totalPengeluaran;
+
+        document.getElementById('textTotalPendapatan').innerText = "Rp " + totalPendapatan.toLocaleString('id-ID');
+        document.getElementById('textTotalPengeluaran').innerText = "Rp " + totalPengeluaran.toLocaleString('id-ID');
+        document.getElementById('textTotalHutang').innerText = "Rp " + totalSisaHutangBelumDibayar.toLocaleString('id-ID');
+        document.getElementById('textSisaSaldo').innerText = "Rp " + sisaSaldoDiTangan.toLocaleString('id-ID');
+        document.getElementById('textSisaSaldo').style.color = sisaSaldoDiTangan < 0 ? "#ffdddd" : "white";
+
+        if (wajibBroadcast) broadcastData();
     }
 
-    // FUNGSI UTAMA UNTUK DOWNLOAD EXCEL (.XLSX)
     function downloadExcel() {
-        let dataPengeluaran = JSON.parse(localStorage.getItem('dataKeuangan')) || [];
-        
-        if (dataPengeluaran.length === 0) {
-            alert("Belum ada data keuangan yang disimpan bulan ini!");
-            return;
+        let listPendapatan = JSON.parse(localStorage.getItem('db_pendapatan')) || [];
+        let listPengeluaran = JSON.parse(localStorage.getItem('db_pengeluaran')) || [];
+        let listHutang = JSON.parse(localStorage.getItem('db_hutang')) || [];
+        if (listPendapatan.length === 0 && listPengeluaran.length === 0 && listHutang.length === 0) return alert("Tidak ada data!");
+
+        const workbook = XLSX.utils.book_new();
+
+        if(listHutang.length > 0) {
+            let cetakHutang = listHutang.map(item => {
+                let terbayar = item.ListPembayaran.reduce((sum, p) => sum + p.JumlahBayar, 0);
+                return {
+                    "Tanggal Berhutang": item.Tanggal,
+                    "Pemberi Hutang": item.Nama,
+                    "Keterangan Keperluan": item.Keterangan,
+                    "Hutang Pokok (Rp)": item.JumlahPokok,
+                    "Sudah Dibayar (Rp)": terbayar,
+                    "Sisa Hutang (Rp)": item.JumlahPokok - terbayar,
+                    "Status": (item.JumlahPokok - terbayar) <= 0 ? "LUNAS" : "Belum Lunas"
+                };
+            });
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cetakHutang), "Data Hutang");
         }
 
-        // Mengubah data JSON menjadi sheet Excel
-        const worksheet = XLSX.utils.json_to_sheet(dataPengeluaran);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Keuangan");
+        if(listPengeluaran.length > 0) {
+            let cetakPengeluaran = listPengeluaran.map(item => ({
+                "Tanggal": item.Tanggal, "Kategori": item.Kategori, "Keterangan": item.Keterangan, "Jumlah (Rp)": item.Jumlah, "Periode": item.Periode
+            }));
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cetakPengeluaran), "Data Pengeluaran");
+        }
 
-        // Mengatur nama file otomatis berdasarkan bulan & tahun saat ini
-        const infoWaktu = new Date();
-        const namaBulan = infoWaktu.toLocaleString('id-ID', { month: 'long' });
-        const tahun = infoWaktu.getFullYear();
-        const namaFile = `Laporan_Keuangan_${namaBulan}_${tahun}.xlsx`;
+        if(listPendapatan.length > 0) {
+            let cetakPendapatan = listPendapatan.map(item => ({
+                "Tanggal": item.Tanggal, "Sumber/Pekerjaan": item.Pekerjaan, "Jumlah (Rp)": item.Jumlah
+            }));
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cetakPendapatan), "Data Pendapatan");
+        }
 
-        // Jalankan perintah download file Excel ke HP
-        XLSX.writeFile(workbook, namaFile);
+        const waktu = new Date();
+        XLSX.writeFile(workbook, `Laporan_Keuangan_Lengkap_${waktu.getFullYear()}.xlsx`);
     }
 
-    function resetDataBulanIni() {
-        if (confirm("Apakah Anda yakin ingin menghapus data di aplikasi? Pastikan Anda sudah mendownload file Excel bulan ini terlebih dahulu sebagai backup.")) {
-            localStorage.removeItem('dataKeuangan');
-            tampilkanDanHitungData();
+    function resetAplikasi() {
+        if (confirm("Hapus seluruh data bulan ini (Termasuk Transaksi & Hutang)?")) {
+            localStorage.removeItem('db_pendapatan');
+            localStorage.removeItem('db_pengeluaran');
+            localStorage.removeItem('db_hutang');
+            prosesDanTampilkanData(true);
         }
     }
 </script>
 
 </body>
 </html>
+
